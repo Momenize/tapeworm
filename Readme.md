@@ -1,5 +1,4 @@
 # Tapeworm Message Extractor
-* A test app for extracting messages from messengers
 
 1. ## Rubikaworm: 
     - Reads channel IDs (usernames or GUIDs) from rubika_channels.txt (one per line)
