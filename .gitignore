@@ -1,0 +1,6 @@
+*.json
+telegram-scraper
+*channels.txt
+*.rp
+*.session
+*pycache*
