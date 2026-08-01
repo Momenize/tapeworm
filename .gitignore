@@ -4,3 +4,4 @@ telegram-scraper
 *.rp
 *.session
 *pycache*
+tests

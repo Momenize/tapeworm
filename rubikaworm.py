@@ -119,6 +119,7 @@ async def fetch_channel_messages(client: Client, channel_id: str) -> dict:
     result = {
         "channel_id": channel_id,
         "status": "ok",
+        "description": None,
         "messages": [],
     }
 
@@ -134,6 +135,12 @@ async def fetch_channel_messages(client: Client, channel_id: str) -> dict:
         # which we need to seed get_messages_interval (it has no "give me
         # the latest" default and rejects an empty/None id).
         chat = _get_field(info, "chat")
+        result["description"] = (
+            _get_field(chat, "description")
+            or _get_field(info, "description")
+            or _get_field(info, "about")
+            or _get_field(chat, "about")
+        )
         seed_message_id = (
             _get_field(chat, "last_message_id")
             or _get_field(info, "last_message_id")
