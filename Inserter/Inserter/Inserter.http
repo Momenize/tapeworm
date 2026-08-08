@@ -1,0 +1,10 @@
+@Inserter_HostAddress = https://localhost:7129
+
+GET {{Inserter_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
+
+POST {{Inserter_HostAddress}}/products/AddProducts
+
+###
