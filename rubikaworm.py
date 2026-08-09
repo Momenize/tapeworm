@@ -67,6 +67,53 @@ def _get_field(obj, name, default=None):
     return getattr(obj, name, default)
 
 
+def _get_first_field(obj, names, default=None):
+    """Return the first available field from the object."""
+    for name in names:
+        value = _get_field(obj, name)
+        if value is not None:
+            return value
+    return default
+
+
+def build_channel_reference(channel_id: str, info, chat) -> str:
+    """Build a channel reference suitable for a Rubika URL."""
+    reference = _get_first_field(info, ["username", "user_name", "name", "title"])
+    if reference is None:
+        reference = _get_first_field(chat, ["username", "user_name", "name", "title"])
+    if reference is None:
+        reference = channel_id
+    return str(reference).lstrip("@")
+
+
+def build_message_url(channel_ref: str, message_id) -> str | None:
+    """Format a Rubika message URL from channel reference and message id."""
+    if message_id is None:
+        return None
+    if isinstance(message_id, bytes):
+        message_id = message_id.decode("utf-8", errors="ignore")
+    return f"https://rubika.ir/{channel_ref}/{message_id}"
+
+
+async def _get_message_share_url(client: Client, object_guid: str, message_id) -> str | None:
+    """Use Rubpy to request the shareable URL for a message."""
+    if message_id is None:
+        return None
+    if isinstance(message_id, bytes):
+        message_id = message_id.decode("utf-8", errors="ignore")
+
+    try:
+        response = await client.get_message_url(object_guid, str(message_id))
+        return (
+            _get_field(response, "share_url")
+            or _get_field(response, "shareUrl")
+            or _get_field(response, "message_url")
+            or _get_field(response, "url")
+        )
+    except Exception:
+        return None
+
+
 async def fetch_last_n_messages(client: Client, guid: str, n: int, seed_message_id) -> list:
     """
     Walk backward through a channel's history using get_messages_interval,
@@ -153,6 +200,7 @@ async def fetch_channel_messages(client: Client, channel_id: str) -> dict:
             result["status"] = "error: could not determine a starting message id for this channel"
             return result
 
+        chat_ref = build_channel_reference(channel_id, info, chat)
         messages = await fetch_last_n_messages(client, guid, MESSAGES_PER_CHANNEL, seed_message_id)
 
         for msg in messages:
@@ -164,9 +212,13 @@ async def fetch_channel_messages(client: Client, channel_id: str) -> dict:
             if not text and not caption:
                 continue
 
+            message_id = _get_field(msg, "message_id")
             result["messages"].append(
                 {
-                    "message_id": _get_field(msg, "message_id"),
+                    "message_url": (
+                        await _get_message_share_url(client, guid, message_id)
+                        or build_message_url(chat_ref, message_id)
+                    ),
                     "datetime_utc": format_timestamp(raw_time),
                     "text": text,
                     "caption": caption,
