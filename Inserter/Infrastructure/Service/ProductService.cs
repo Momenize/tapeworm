@@ -63,57 +63,85 @@ public class ProductService(AppDbContext dbContext, DeepSeekSettings deepSeekSet
                 using var client = new HttpClient();
                 if (!string.IsNullOrWhiteSpace(deepSeekSettings.ApiKey))
                 {
-                    // common pattern: bearer or api-key header. We add both safely.
-                    if (!client.DefaultRequestHeaders.Contains("Authorization"))
-                        client.DefaultRequestHeaders.Add("Authorization", deepSeekSettings.ApiKey);
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {deepSeekSettings.ApiKey}");
                 }
 
+                // DeepSeek API expects this format
                 var payload = new
                 {
-                    prompt = DeepSeekSettings.Prompt,
-                    channels = channels
+                    model = "deepseek-chat", // or "deepseek-coder" depending on your needs
+                    messages = new[]
+                    {
+            new {
+                role = "user",
+                content = DeepSeekSettings.Prompt // Your prompt text here
+            }
+        },
+                    temperature = 0.7, // Optional: controls randomness
+                    max_tokens = 1000 // Optional: max length of response
                 };
 
-                var content = new StringContent(JsonSerializer.Serialize(payload, jsonOptions), Encoding.UTF8, "application/json");
+                var content = new StringContent(
+                    JsonSerializer.Serialize(payload, jsonOptions),
+                    Encoding.UTF8,
+                    "application/json"
+                );
+
                 var resp = await client.PostAsync(deepSeekSettings.ApiUri, content);
+
                 if (resp.IsSuccessStatusCode)
                 {
                     var respStr = await resp.Content.ReadAsStringAsync();
+
+                    // Parse the response - DeepSeek returns a chat completion response
                     try
                     {
-                        var respOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                        var list = JsonSerializer.Deserialize<List<ExtractedProduct>>(respStr, respOptions);
-                        if (list is not null)
-                            extractedProducts.AddRange(list);
-                        else
+                        var responseObj = JsonSerializer.Deserialize<DeepSeekResponse>(respStr,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                        if (responseObj?.Choices?.FirstOrDefault()?.Message?.Content is string contentStr)
                         {
-                            // try single object
-                            var single = JsonSerializer.Deserialize<ExtractedProduct>(respStr, respOptions);
-                            if (single is not null)
-                                extractedProducts.Add(single);
+                            // Now parse the content string which should contain your extracted products
+                            // Assuming contentStr is JSON that can be deserialized to List<ExtractedProduct>
+                            var list = JsonSerializer.Deserialize<List<ExtractedProduct>>(contentStr,
+                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                            if (list is not null)
+                                extractedProducts.AddRange(list);
+                            else
+                            {
+                                // Try single object
+                                var single = JsonSerializer.Deserialize<ExtractedProduct>(contentStr,
+                                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                                if (single is not null)
+                                    extractedProducts.Add(single);
+                            }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // on any parsing error fallback to local extraction
-                        extractedProducts.AddRange(ExtractLocally(channels));
+                        Console.WriteLine($"Cannot extract channels 1: {ex.Message}");
+                        return;
                     }
                 }
                 else
                 {
-                    // non-success -> fallback to local extraction
-                    extractedProducts.AddRange(ExtractLocally(channels));
+                    var errorContent = await resp.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Cannot extract channels 2. Status: {resp.StatusCode}, Error: {errorContent}");
+                    return;
                 }
             }
             catch
             {
                 // network or other error -> fallback to local
-                extractedProducts.AddRange(ExtractLocally(channels));
+                Console.WriteLine("Cannot extract channels 3");
+                return;
             }
         }
         else
         {
-            extractedProducts.AddRange(ExtractLocally(channels));
+            Console.WriteLine("Cannot extract channels 4");
+            return;
         }
 
         // Persist extracted products into database. Ensure channels and categories exist.
@@ -184,18 +212,18 @@ public class ProductService(AppDbContext dbContext, DeepSeekSettings deepSeekSet
     // Minimal DTOs for the JSON structure we have
     private class RubikaChannelDto
     {
-        public string? channel_id { get; set; }
-        public string? status { get; set; }
-        public string? description { get; set; }
-        public List<RubikaMessageDto>? messages { get; set; }
+        public string? ChannelId { get; set; }
+        public string? Status { get; set; }
+        public string? Description { get; set; }
+        public List<RubikaMessageDto>? Messages { get; set; }
     }
 
     private class RubikaMessageDto
     {
-        public string? message_id { get; set; }
-        public string? datetime_utc { get; set; }
-        public string? text { get; set; }
-        public string? caption { get; set; }
+        public string? MessageId { get; set; }
+        public string? DatetimeUtc { get; set; }
+        public string? Text { get; set; }
+        public string? Caption { get; set; }
     }
 
     private class ExtractedProduct
@@ -212,92 +240,34 @@ public class ProductService(AppDbContext dbContext, DeepSeekSettings deepSeekSet
         public string? SellMethod { get; set; }
     }
 
-    // Local heuristic extraction used when DeepSeek is not available or fails
-    private static IEnumerable<ExtractedProduct> ExtractLocally(IEnumerable<RubikaChannelDto> channels)
+    public class DeepSeekResponse
     {
-        var results = new List<ExtractedProduct>();
-        foreach (var ch in channels)
-        {
-            var channelId = ch.channel_id;
-            var channelDescription = ch.description;
-            if (ch.messages == null) continue;
-
-            foreach (var m in ch.messages)
-            {
-                if (string.IsNullOrWhiteSpace(m.text)) continue;
-
-                var lines = m.text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                                  .Select(l => l.Trim())
-                                  .Where(l => !string.IsNullOrWhiteSpace(l))
-                                  .ToArray();
-                if (lines.Length == 0) continue;
-
-                // Title: prefer first meaningful line without emojis
-                var title = lines.FirstOrDefault(l => l.Any(c => !char.IsPunctuation(c) && !char.IsSymbol(c))) ?? lines[0];
-
-                // Price: look for explicit price patterns
-                decimal? price = null;
-                // look for numbers followed by تومان or ریال or ﷼
-                var priceRegex = new Regex(@"([0-9]{1}[0-9,./\s]{0,30})(?:\s*(?:تومان|ریال|﷼))", RegexOptions.Compiled);
-                var mPrice = priceRegex.Match(m.text);
-                if (mPrice.Success)
-                {
-                    var num = Regex.Replace(mPrice.Groups[1].Value, "[^0-9]", "");
-                    if (decimal.TryParse(num, out var parsed)) price = parsed;
-                }
-                else
-                {
-                    // fallback: look for a line starting with "قیمت" or containing "قیمت"
-                    var priceLine = lines.FirstOrDefault(l => l.Contains("قیمت") && l.Any(char.IsDigit));
-                    if (priceLine != null)
-                    {
-                        var digits = Regex.Replace(priceLine, "[^0-9]", "");
-                        if (decimal.TryParse(digits, out var parsed)) price = parsed;
-                    }
-                }
-
-                // Category: try to infer from channel description or default
-                var category = "General";
-                if (!string.IsNullOrWhiteSpace(channelDescription))
-                {
-                    // pick first word-ish element
-                    var parts = channelDescription.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                                                   .Select(p => p.Trim())
-                                                   .Where(p => p.Length > 3)
-                                                   .ToArray();
-                    if (parts.Length > 0) category = parts[0];
-                }
-
-                // Brand: try to detect common brand words in the text (very heuristic)
-                string? brand = null;
-                var brandCandidates = new[] { "هامبورگ", "میتا", "فورس", "مولتی", "مستر", "هافنر" };
-                foreach (var b in brandCandidates)
-                {
-                    if (m.text.Contains(b, StringComparison.OrdinalIgnoreCase))
-                    {
-                        brand = b;
-                        break;
-                    }
-                }
-
-                // Description: use whole text as description
-                var desc = m.text;
-
-                results.Add(new ExtractedProduct
-                {
-                    Title = title,
-                    ProductName = title,
-                    ChannelId = channelId,
-                    ChannelUserName = ch.channel_id,
-                    ChannelDescription = channelDescription,
-                    CategoryName = category,
-                    Price = price,
-                    Description = desc,
-                    Brand = brand
-                });
-            }
-        }
-
-        return results;
+        public string? Id { get; set; }
+        public string? Object { get; set; }
+        public long Created { get; set; }
+        public string? Model { get; set; }
+        public List<Choice> Choices { get; set; } = [];
+        public Usage? Usage { get; set; }
     }
+
+    public class Choice
+    {
+        public int Index { get; set; }
+        public Message? Message { get; set; }
+        public string? FinishReason { get; set; }
+    }
+
+    public class Message
+    {
+        public string? Role { get; set; }
+        public string? Content { get; set; }
+    }
+
+    public class Usage
+    {
+        public int PromptTokens { get; set; }
+        public int CompletionTokens { get; set; }
+        public int TotalTokens { get; set; }
+    }
+
 }
