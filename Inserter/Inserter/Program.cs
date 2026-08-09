@@ -1,20 +1,30 @@
-using Application.Assemblies;
-using Infrastructure;
-using Infrastructure.Service;
+using Domain.IServices;
+using Infrastructure.Services;
+using Infrastructure.AppDbContext;
+using Microsoft.EntityFrameworkCore;
+using Infrastructure.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddInfrastructure(builder.Configuration);
-var deepSeekSettings = new DeepSeekSettings();
-builder.Configuration.Bind("DeepSeek", deepSeekSettings);
-builder.Services.AddSingleton(deepSeekSettings);
-var messagesPath = builder.Configuration.GetValue<string>("MessagesPath");
-builder.Services.AddSingleton(new MessagesFilePath(messagesPath!));
-builder.Services.AddMediatR(r => r.RegisterServicesFromAssemblyContaining<MediatorDI>());
+
+var connectionString = builder.Configuration.GetConnectionString("AppDbContext");
+
+builder.Services.AddDbContext<MasterDbContext>(options => options.UseSqlServer(connectionString));
+
+builder.Services.AddHttpClient<ILlmExtractionService, LlmExtractionService>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Ollama:BaseAddress"] ?? "http://localhost:11434");
+    client.Timeout = TimeSpan.FromMinutes(30);
+});
+
+MessagesFilePathSettings messageFilePath = new();
+string? path = builder.Configuration.GetValue<string>("MessagesFilePath");
+messageFilePath.FilePath = path!;
+builder.Services.AddSingleton(messageFilePath);
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

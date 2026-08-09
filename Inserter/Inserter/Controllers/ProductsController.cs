@@ -1,36 +1,51 @@
-using Application;
-using MediatR;
+using Domain.DTOs;
+using Domain.IServices;
+using Infrastructure.AppDbContext;
+using Infrastructure.Settings;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
-namespace Inserter.Controllers
+namespace Inserter.Controllers;
+
+[ApiController]
+[Route("[controller]")]
+public class ProductsController : ControllerBase
 {
-    [ApiController]
-    [Route("[controller]")]
-    public class ProductsController(IMediator mediator) : ControllerBase
+    private readonly ILlmExtractionService _llm;
+
+    public ProductsController(ILlmExtractionService llm)
     {
-        [Route("Insert")]
-        public async Task<IActionResult> AddProducts()
+        _llm = llm;
+    }
+
+    [HttpGet("Insert")]
+    public async Task<IActionResult> Insert(CancellationToken cancellationToken, MessagesFilePathSettings messagesFilePath)
+    {
+        var path = messagesFilePath.FilePath;
+        var text = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
+        var channels = System.Text.Json.JsonSerializer.Deserialize<List<ChannelInputDTO>>(text, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (channels is null)
+            return BadRequest("Could not parse input JSON");
+
+        foreach (var ch in channels)
         {
-            var result = await mediator.Send(new AddProductsCommand());
-            if(result is not null)
-            {
-                return Ok(result);
-            }
-            return BadRequest();
+            await _llm.ProcessChannelAsync(ch, cancellationToken);
         }
 
-        [Route("Get/{Id}")]
-        public async Task<IActionResult> GetChannelProducts([FromRoute] int Id)
-        {
-            var result = await mediator.Send(new GetChannelProductsQuery
-            {
-                ChannelId = Id
-            });
-            if(result is not null)
-            {
-                return Ok(result);
-            }
-            return BadRequest();
-        }
+        return Ok();
+    }
+
+    [HttpGet("Get/{channelExternalId}")]
+    public async Task<IActionResult> Get(string channelExternalId, [FromServices] MasterDbContext db, CancellationToken cancellationToken)
+    {
+        var channel = await db.Channels.FirstOrDefaultAsync(x => x.ExternalId == channelExternalId, cancellationToken: cancellationToken);
+        if (channel is null) return NotFound();
+
+        var products = await db.Products.Where(p => p.ChannelId == channel.Id).Select(p => new {
+            p.Id, p.Name, p.Brand, p.Price, p.Description, p.MessageUrl
+        }).ToListAsync(cancellationToken);
+
+        return Ok(new { channel = new { channel.Id, channel.ExternalId, channel.Description, channel.City, channel.PhoneNumbers }, products });
     }
 }
