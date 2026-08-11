@@ -20,6 +20,9 @@ builder.Services.AddHttpClient<ILlmExtractionService, LlmExtractionService>(clie
     client.Timeout = TimeSpan.FromMinutes(30);
 });
 
+
+builder.Services.AddScoped<GeminiExtractor>();
+
 MessagesFilePathSettings messageFilePath = new();
 string? path = builder.Configuration.GetValue<string>("MessagesFilePath");
 messageFilePath.FilePath = path!;
