@@ -50,7 +50,7 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
                 channel.Messages,
                 cancellationToken);
 
-            // Deterministic metadata — don't ask Gemini for it.
+            // Deterministic metadata ï¿½ don't ask Gemini for it.
             extracted.ChannelId = channel.ChannelId;
             extracted.Description = channel.Description;
             foreach(var product in extracted.Products)
