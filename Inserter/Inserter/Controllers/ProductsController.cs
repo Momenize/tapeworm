@@ -9,28 +9,22 @@ namespace Inserter.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-public class ProductsController : ControllerBase
+public class ProductsController(ILlmExtractionService llm) : ControllerBase
 {
-    private readonly ILlmExtractionService _llm;
-
-    public ProductsController(ILlmExtractionService llm)
-    {
-        _llm = llm;
-    }
-
     [HttpGet("Insert")]
     public async Task<IActionResult> Insert(CancellationToken cancellationToken, MessagesFilePathSettings messagesFilePath)
     {
         var path = messagesFilePath.FilePath;
         var text = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
-        var channels = System.Text.Json.JsonSerializer.Deserialize<List<ChannelInputDTO>>(text, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var channels = System.Text.Json.JsonSerializer.Deserialize<List<ChannelInputDTO>>(text,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         if (channels is null)
             return BadRequest("Could not parse input JSON");
 
         foreach (var ch in channels)
         {
-            await _llm.ProcessChannelAsync(ch, cancellationToken);
+            await llm.ProcessChannelAsync(ch, cancellationToken);
         }
 
         return Ok();
