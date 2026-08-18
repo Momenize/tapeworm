@@ -11,15 +11,15 @@ namespace Inserter.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-public class ProductsController(ILlmExtractionService llm, MessagesFilePathSettings _messagesFilePathSettings) : ControllerBase
+public class ProductsController(ILlmExtractionService llm, MessagesFilePathSettings messagesFilePathSettings) : ControllerBase
 {
     private readonly ILlmExtractionService _llm = llm;
 
 
     [HttpPost("gemini")]
-    public async Task<IActionResult> ExtractWithGemini(GeminiExtractor _geminiExtractor, CancellationToken cancellationToken)
+    public async Task<IActionResult> ExtractWithGemini(GeminiExtractor geminiExtractor, CancellationToken cancellationToken)
     {
-        var filePath = _messagesFilePathSettings.FilePath;
+        var filePath = messagesFilePathSettings.FilePath;
 
         if (!System.IO.File.Exists(filePath))
             return NotFound($"File not found: {filePath}");
@@ -46,7 +46,7 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
             if (channel.Messages.Count == 0)
                 continue;
 
-            var extracted = await _geminiExtractor.Extract(
+            var extracted = await geminiExtractor.Extract(
                 channel.Messages,
                 cancellationToken);
 
@@ -63,7 +63,7 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
             extractedChannels.Add(extracted);
         }
 
-        await _geminiExtractor.InsertToDatabase(extractedChannels);
+        await geminiExtractor.InsertToDatabase(extractedChannels);
         
         return Ok(extractedChannels);
     }
@@ -72,7 +72,7 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
     [HttpGet("Insert")]
     public async Task<IActionResult> Insert(CancellationToken cancellationToken)
     {
-        var path = _messagesFilePathSettings.FilePath;
+        var path = messagesFilePathSettings.FilePath;
         var text = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
         var channels = JsonSerializer.Deserialize<List<ChannelInputDTO>>(text, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
