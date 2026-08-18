@@ -6,16 +6,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Inserter.Services;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Inserter.Controllers;
 
 [ApiController]
-[Route("[controller]")]
+[Route("api/products/")]
 public class ProductsController(ILlmExtractionService llm, MessagesFilePathSettings messagesFilePathSettings) : ControllerBase
 {
-    private readonly ILlmExtractionService _llm = llm;
-
-
     [HttpPost("gemini")]
     public async Task<IActionResult> ExtractWithGemini(GeminiExtractor geminiExtractor, CancellationToken cancellationToken)
     {
@@ -68,8 +67,61 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
         return Ok(extractedChannels);
     }
 
+    [HttpGet("openrouter")]
+    [ProducesResponseType(typeof(OkObjectResult), 200)]
+    [ProducesResponseType(typeof(BadRequestObjectResult), 400)]
+    [ProducesResponseType(500)]
+    public async Task<IActionResult> ExtractWithOpenRouter(OpenRouterExtractor extractor, CancellationToken cancellationToken)
+    {
+        var filePath = messagesFilePathSettings.FilePath;
 
-    [HttpGet("Insert")]
+        if (!System.IO.File.Exists(filePath))
+            return NotFound($"File not found: {filePath}");
+
+        var json = await System.IO.File.ReadAllTextAsync(
+            filePath,
+            cancellationToken);
+
+        var channels =
+            JsonSerializer.Deserialize<List<MessageFileChannelDTO>>(
+                json,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+        if (channels is null)
+            return BadRequest("Invalid messages JSON file.");
+
+        var extractedChannels = new List<ExtractedChannelDTO>();
+        
+        foreach (var channel in channels)
+        {
+            if (channel.Messages.Count == 0)
+                continue;
+
+            var extracted = await extractor.Extract(
+                channel.Messages,
+                cancellationToken);
+
+            // Deterministic metadata � don't ask Gemini for it.
+            extracted.ChannelId = channel.ChannelId;
+            extracted.Description = channel.Description;
+            foreach(var product in extracted.Products)
+            {
+                if(product.CategoryName is null)
+                {
+                    product.CategoryName = "General";
+                }
+            }
+            extractedChannels.Add(extracted);
+        }
+
+        await extractor.InsertToDatabase(extractedChannels);
+        return Ok("Inserted into Database");
+
+    }
+    
+    [HttpGet("InsertWithOllama")]
     public async Task<IActionResult> Insert(CancellationToken cancellationToken)
     {
         var path = messagesFilePathSettings.FilePath;
@@ -81,7 +133,7 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
 
         foreach (var ch in channels)
         {
-            await _llm.ProcessChannelAsync(ch, cancellationToken);
+            await llm.ProcessChannelAsync(ch, cancellationToken);
         }
 
         return Ok();

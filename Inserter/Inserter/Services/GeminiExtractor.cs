@@ -115,7 +115,7 @@ public class GeminiExtractor
                 Products = [.. channel.Products.Select(p => new Product
                 {
                     Category = _dbContext.Categories.Any(c => c.CategoryName == p.CategoryName) ? 
-                        _dbContext.Categories.Where(c => c.CategoryName == p.CategoryName).First() : 
+                        _dbContext.Categories.First(c => c.CategoryName == p.CategoryName) : 
                             new Category
                             {
                                 CategoryName = p.CategoryName!
