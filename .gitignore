@@ -1,7 +1,7 @@
 *pycache*
 tests
 
-# required for worm and fly
+# Required for/Created by worm and fly
 bulk_send_results.json
 message.txt
 *.rp
