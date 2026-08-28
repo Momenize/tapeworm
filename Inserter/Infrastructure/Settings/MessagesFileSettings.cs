@@ -1,6 +1,6 @@
 ﻿namespace Infrastructure.Settings;
 
-public class MessagesFilePathSettings
+public class MessagesFileSettings
 {
     public string FilePath { get; set; } = "";
 }

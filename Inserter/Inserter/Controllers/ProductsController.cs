@@ -6,19 +6,23 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Application.OmniRoute.Commands;
 using Inserter.Services;
+using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Inserter.Controllers;
 
 [ApiController]
-[Route("api/products/")]
-public class ProductsController(ILlmExtractionService llm, MessagesFilePathSettings messagesFilePathSettings) : ControllerBase
+[Route("[controller]")]
+public class ProductsController(ILlmExtractionService llm, 
+    MessagesFileSettings messagesFileSettings,
+    IMediator mediator) : BaseController(mediator)
 {
-    [HttpPost("gemini")]
+    [HttpPost("[action]")]
     public async Task<IActionResult> ExtractWithGemini(GeminiExtractor geminiExtractor, CancellationToken cancellationToken)
     {
-        var filePath = messagesFilePathSettings.FilePath;
+        var filePath = messagesFileSettings.FilePath;
 
         if (!System.IO.File.Exists(filePath))
             return NotFound($"File not found: {filePath}");
@@ -73,7 +77,7 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
     [ProducesResponseType(500)]
     public async Task<IActionResult> ExtractWithOpenRouter(OpenRouterExtractor extractor, CancellationToken cancellationToken)
     {
-        var filePath = messagesFilePathSettings.FilePath;
+        var filePath = messagesFileSettings.FilePath;
 
         if (!System.IO.File.Exists(filePath))
             return NotFound($"File not found: {filePath}");
@@ -124,7 +128,7 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
     [HttpGet("InsertWithOllama")]
     public async Task<IActionResult> Insert(CancellationToken cancellationToken)
     {
-        var path = messagesFilePathSettings.FilePath;
+        var path = messagesFileSettings.FilePath;
         var text = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
         var channels = JsonSerializer.Deserialize<List<ChannelInputDTO>>(text, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -151,37 +155,18 @@ public class ProductsController(ILlmExtractionService llm, MessagesFilePathSetti
 
         return Ok(new { channel = new { channel.Id, channel.ExternalId, channel.Description, channel.City, channel.PhoneNumbers }, products });
     }
+    
+    
+    [HttpGet("[action]")]
+    [ProducesResponseType(typeof(OkObjectResult), 200)]
+    [ProducesResponseType(typeof(BadRequestObjectResult), 400)]
+    [ProducesResponseType(500)]
+    public async Task<IActionResult> ExtractByOmniRoute(FetchByOmniRouteAndInsertCommand request)
+    {
+        return await HandleRequest(request);
+    }
 }
 
 
 
 
-public sealed class MessageFileChannelDTO
-{
-    [JsonPropertyName("channel_id")]
-    public string ChannelId { get; set; } = null!;
-
-    [JsonPropertyName("status")]
-    public string Status { get; set; } = null!;
-
-    [JsonPropertyName("description")]
-    public string Description { get; set; } = null!;
-
-    [JsonPropertyName("messages")]
-    public List<MessageFileMessageDTO> Messages { get; set; } = [];
-}
-
-public sealed class MessageFileMessageDTO
-{
-    [JsonPropertyName("message_url")]
-    public string MessageUrl { get; set; } = null!;
-
-    [JsonPropertyName("datetime_utc")]
-    public string DatetimeUtc { get; set; } = null!;
-
-    [JsonPropertyName("text")]
-    public string Text { get; set; } = null!;
-
-    [JsonPropertyName("caption")]
-    public string? Caption { get; set; }
-}
