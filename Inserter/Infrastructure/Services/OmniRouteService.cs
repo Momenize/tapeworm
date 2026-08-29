@@ -1,8 +1,7 @@
 using Domain.IServices;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-
 namespace Infrastructure.Services;
-
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -75,6 +74,11 @@ public class OmniRouteService(MasterDbContext dbContext, IConfiguration configur
                         messageUrl = new
                         {
                             type = "string"
+                        },
+                        
+                        index = new
+                        {
+                            type = "integer"
                         }
                     },
 
@@ -86,7 +90,8 @@ public class OmniRouteService(MasterDbContext dbContext, IConfiguration configur
                         "purchaseMethod",
                         "price",
                         "description",
-                        "messageUrl"
+                        "messageUrl",
+                        "index"
                     }
                 }
             }
@@ -100,19 +105,12 @@ public class OmniRouteService(MasterDbContext dbContext, IConfiguration configur
         }
     };
 
-    public async Task<ExtractedChannelDTO> Extract(List<MessageFileMessageDTO> messages, CancellationToken cancellationToken = default)
+    public async Task<ChannelOutputDTO> Extract(ChannelInputDTO channel, 
+        CancellationToken cancellationToken = default)
     {
-        var input = messages
-            .Where(x => !string.IsNullOrWhiteSpace(x.Text))
-            .Select(x => 
-                new
-                {
-                    message_url = x.MessageUrl, 
-                    text = x.Text
-                })
-            .ToList();
+        
 
-        var inputJson = JsonSerializer.Serialize(input);
+        var inputJson = JsonSerializer.Serialize(channel);
 
         var prompt = $"""
                       Extract product information from the following
@@ -143,6 +141,7 @@ public class OmniRouteService(MasterDbContext dbContext, IConfiguration configur
                       - Extract purchase method only when explicitly stated.
                       - messageUrl MUST be copied exactly from the input message.
                       - Do not invent category names or brands.
+                      - Ignore field index in messages and pass it without changing it.
 
                       Messages:
 
@@ -282,9 +281,9 @@ public class OmniRouteService(MasterDbContext dbContext, IConfiguration configur
         {
             parsed?.Dispose();
         }
-
-        var result = JsonSerializer.Deserialize<ExtractedChannelDTO>(contentString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
+        
+        var result = JsonSerializer.Deserialize<ChannelOutputDTO>(contentString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        
         return result ?? throw new Exception("Failed to deserialize model response");
     }
 
@@ -298,11 +297,11 @@ public class OmniRouteService(MasterDbContext dbContext, IConfiguration configur
 
             foreach (var p in channel.Products)
             {
-                var category = dbContext.Categories.FirstOrDefault(c => c.CategoryName == p.CategoryName);
+                var category = await dbContext.Categories.FirstOrDefaultAsync(c => c.CategoryName == p.CategoryName);
                 if (category == null)
                 {
-                    category = new Category { CategoryName = p.CategoryName ?? "General" };
-                    dbContext.Categories.Add(category);
+                    category = new Category { CategoryName = p.CategoryName! };
+                    await dbContext.Categories.AddAsync(category);
                     // will be saved with channels later
                 }
 
@@ -332,5 +331,23 @@ public class OmniRouteService(MasterDbContext dbContext, IConfiguration configur
 
         await dbContext.Channels.AddRangeAsync(channelEntities);
         await dbContext.SaveChangesAsync();
+    }
+
+    public async Task AddChannel(ExtractedChannelDTO channel)
+    {
+        await dbContext.Channels
+            .AddAsync(new Channel()
+            {
+                Description = channel.Description,
+                City = channel.City,
+                ExternalId = channel.ChannelId,
+                PhoneNumbers = channel.PhoneNumbers
+            });
+        await dbContext.SaveChangesAsync();
+    }
+    public async Task<bool> ChannelWithIdExists(string channelId)
+    {
+        return await dbContext.Channels
+            .AnyAsync(x => x.ExternalId == channelId);
     }
 }

@@ -30,4 +30,5 @@ public sealed class MessageFileMessageDTO
 
     [JsonPropertyName("caption")]
     public string? Caption { get; set; }
+    public int? Index;
 }

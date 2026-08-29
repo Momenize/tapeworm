@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Application.BaseClasses;
 using Application.OmniRoute.Commands;
 using Inserter.Services;
 using MediatR;
@@ -15,7 +16,7 @@ namespace Inserter.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-public class ProductsController(ILlmExtractionService llm, 
+public class ProductsController(/*ILlmExtractionService llm*/ 
     MessagesFileSettings messagesFileSettings,
     IMediator mediator) : BaseController(mediator)
 {
@@ -125,23 +126,23 @@ public class ProductsController(ILlmExtractionService llm,
 
     }
     
-    [HttpGet("InsertWithOllama")]
-    public async Task<IActionResult> Insert(CancellationToken cancellationToken)
-    {
-        var path = messagesFileSettings.FilePath;
-        var text = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
-        var channels = JsonSerializer.Deserialize<List<ChannelInputDTO>>(text, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        if (channels is null)
-            return BadRequest("Could not parse input JSON");
-
-        foreach (var ch in channels)
-        {
-            await llm.ProcessChannelAsync(ch, cancellationToken);
-        }
-
-        return Ok();
-    }
+    // [HttpGet("InsertWithOllama")]
+    // public async Task<IActionResult> Insert(CancellationToken cancellationToken)
+    // {
+    //     var path = messagesFileSettings.FilePath;
+    //     var text = await System.IO.File.ReadAllTextAsync(path, cancellationToken);
+    //     var channels = JsonSerializer.Deserialize<List<ChannelInputDTO>>(text, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    //
+    //     if (channels is null)
+    //         return BadRequest("Could not parse input JSON");
+    //
+    //     foreach (var ch in channels)
+    //     {
+    //         await llm.ProcessChannelAsync(ch, cancellationToken);
+    //     }
+    //
+    //     return Ok();
+    // }
 
     [HttpGet("Get/{channelExternalId}")]
     public async Task<IActionResult> Get([FromRoute] string channelExternalId, [FromServices] MasterDbContext db, CancellationToken cancellationToken)
@@ -158,10 +159,10 @@ public class ProductsController(ILlmExtractionService llm,
     
     
     [HttpGet("[action]")]
-    [ProducesResponseType(typeof(OkObjectResult), 200)]
-    [ProducesResponseType(typeof(BadRequestObjectResult), 400)]
+    [ProducesResponseType(typeof(IActionResult), 200)]
+    [ProducesResponseType(typeof(BadRequestResult), 400)]
     [ProducesResponseType(500)]
-    public async Task<IActionResult> ExtractByOmniRoute(FetchByOmniRouteAndInsertCommand request)
+    public async Task<IActionResult> ExtractByOmniRoute([FromQuery] FetchByOmniRouteProvidersAndInsertCommand request)
     {
         return await HandleRequest(request);
     }

@@ -11,7 +11,7 @@ from rubpy.exceptions import (
 SESSION_NAME = "my_session"          # rubpy will create/reuse this session file
 CHANNELS_FILE = "rubika_channels.txt"
 OUTPUT_FILE = "rubika_messages.json"
-MESSAGES_PER_CHANNEL = 50
+MESSAGES_PER_CHANNEL = 5
 
 
 def read_channel_ids(path: str) -> list[str]:

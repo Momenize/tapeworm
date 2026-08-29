@@ -17,11 +17,11 @@ builder.Services.AddControllers();
 #region  dependencyInjection
 
 builder.Services.AddScoped<GeminiExtractor>();
-builder.Services.AddHttpClient<ILlmExtractionService, LlmExtractionService>(client =>
-{
-    client.BaseAddress = new Uri(builder.Configuration["Ollama:BaseAddress"] ?? "http://localhost:11434");
-    client.Timeout = TimeSpan.FromMinutes(30);
-});
+// builder.Services.AddHttpClient<ILlmExtractionService, LlmExtractionService>(client =>
+// {
+//     client.BaseAddress = new Uri(builder.Configuration["Ollama:BaseAddress"] ?? "http://localhost:11434");
+//     client.Timeout = TimeSpan.FromMinutes(30);
+// });
 builder.Services.AddHttpClient<IOmniRouteService, OmniRouteService>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["OmniRoute:BaseUrl"]!);

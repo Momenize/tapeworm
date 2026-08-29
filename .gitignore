@@ -25,3 +25,6 @@ obj/
 
 # no hangup
 *.out
+
+# queries
+*.sql

@@ -1,6 +1,8 @@
 namespace Application.BaseClasses;
 
-public record SuccessfulResult();
+public record Result(string? Message);
+public record SuccessfulResult(string? Message) : Result(Message);
+public record NothingHappenedResult(string Message) : Result(Message);
 public class Failure(string code, string message): Exception
 {
     public string Code = code;

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Inserter.Controllers;
 
+
 public class BaseController(IMediator mediator) : Controller
 {
     public string? Ip
@@ -24,7 +25,10 @@ public class BaseController(IMediator mediator) : Controller
     {
         request.Ip = Ip;
         var result = await mediator.Send(request);
-
-        return Ok(result);
+        if (result is Result)
+        {
+            return Ok(result);
+        };
+        return BadRequest(result);
     }
 }

@@ -1,16 +1,13 @@
-﻿namespace Domain.DTOs;
+namespace Domain.DTOs;
 
-public sealed class ExtractedChannelDTO
+public class ChannelOutputDTO
 {
-    public string ChannelId { get; set; } = string.Empty;
-    public string? Description { get; set; }
     public string? City { get; set; }
     public string? PhoneNumbers { get; set; }
-
-    public List<ExtractedProductDTO> Products { get; set; } = [];
+    public List<ProductOutputDTO> Products { get; set; } = [];
 }
 
-public sealed class ExtractedProductDTO
+public class ProductOutputDTO
 {
     public string Name { get; set; } = string.Empty;
     public string? CategoryName { get; set; } = string.Empty;
@@ -18,6 +15,5 @@ public sealed class ExtractedProductDTO
     public string? PurchaseMethod { get; set; }
     public decimal? Price { get; set; }
     public string? Description { get; set; }
-    public string MessageUrl { get; set; } = string.Empty;
-    public DateTime Date { get; set; }
+    public int Index { get; set; }
 }
